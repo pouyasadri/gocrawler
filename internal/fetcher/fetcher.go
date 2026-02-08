@@ -73,6 +73,11 @@ func New(cfg *Config) *Fetcher {
 	}
 }
 
+// Config returns the fetcher configuration.
+func (f *Fetcher) Config() *Config {
+	return f.cfg
+}
+
 // drainReadCloser wraps the underlying response body.
 // Reads are limited by an inner reader; Close will attempt to drain up to drainLimit bytes
 // (helping connection reuse) and then close the underlying response body.
