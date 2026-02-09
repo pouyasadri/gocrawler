@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crawler Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/static/styles.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+</head>
+
+<body class="bg-gray-900 text-gray-100 font-sans antialiased">
+    <div class="container mx-auto p-6">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-400">🕷️ GoCrawler Dashboard</h1>
+            <div id="status-badge" class="px-4 py-2 rounded-full font-semibold bg-gray-800 text-gray-400">
+                <!-- Status managed by JS or SSE updates -->
+                <span id="connection-status">Connecting...</span>
+            </div>
+        </header>
+
+        <div id="dashboard-container">
+            <!-- Stats Row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-gray-400 text-sm font-medium uppercase">URLs Fetched</h3>
+                    <p class="text-3xl font-bold mt-2" id="stat-fetched">{{.URLsFetched}}</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-gray-400 text-sm font-medium uppercase">Queue Size</h3>
+                    <p class="text-3xl font-bold mt-2" id="stat-queue">{{.QueueSize}}</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-gray-400 text-sm font-medium uppercase">Errors</h3>
+                    <p class="text-3xl font-bold mt-2 text-red-400" id="stat-errors">{{.ErrorCount}}</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-gray-400 text-sm font-medium uppercase">Duration</h3>
+                    <p class="text-3xl font-bold mt-2" id="stat-duration">{{.Duration}}</p>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+                <h2 class="text-xl font-bold mb-4">Controls</h2>
+                <div class="flex flex-wrap gap-4 items-center">
+                    <input type="text" name="seed" id="seed-url" placeholder="Enter seed URL (e.g. https://example.com)"
+                        class="flex-1 bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-blue-500 text-white"
+                        value="https://example.com">
+
+                    <button class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded transition"
+                        hx-post="/api/start" hx-include="#seed-url" hx-swap="none">
+                        Start
+                    </button>
+                    <button class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold px-6 py-2 rounded transition"
+                        hx-post="/api/pause" hx-swap="none">
+                        Pause/Resume
+                    </button>
+                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2 rounded transition"
+                        hx-post="/api/stop" hx-swap="none">
+                        Stop
+                    </button>
+                </div>
+                <div class="mt-4 text-sm text-gray-400">
+                    Current State: <span id="stat-state" class="font-mono text-white">{{.State}}</span>
+                </div>
+            </div>
+
+            <!-- Live Feed & Recent -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Current Activity -->
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Active Workers</h2>
+                    <ul id="active-urls" class="space-y-2 font-mono text-sm text-green-300">
+                        {{range .CurrentURLs}}
+                        <li class="truncate">Wait...</li>
+                        {{else}}
+                        <li class="text-gray-500 italic">No active workers</li>
+                        {{end}}
+                    </ul>
+                </div>
+
+                <!-- Recently Fetched -->
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Recently Fetched</h2>
+                    <ul id="recent-urls" class="space-y-2 font-mono text-sm text-blue-300">
+                        {{range .LastFetched}}
+                        <li class="truncate">{{.}}</li>
+                        {{else}}
+                        <li class="text-gray-500 italic">No URLs fetched yet</li>
+                        {{end}}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SSE Listener Script -->
+    <script>
+        const evtSource = new EventSource("/api/events");
+
+        evtSource.onopen = function () {
+            document.getElementById("connection-status").innerText = "Connected";
+            document.getElementById("status-badge").classList.remove("text-gray-400");
+            document.getElementById("status-badge").classList.add("text-green-400");
+        };
+
+        evtSource.onmessage = function (event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                // Update stats
+                document.getElementById("stat-fetched").innerText = data.urls_fetched;
+                document.getElementById("stat-queue").innerText = data.queue_size;
+                document.getElementById("stat-errors").innerText = data.error_count;
+                document.getElementById("stat-duration").innerText = data.duration;
+                document.getElementById("stat-state").innerText = data.state;
+
+                // Update active URLs
+                const activeList = document.getElementById("active-urls");
+                activeList.innerHTML = "";
+                if (data.current_urls && data.current_urls.length > 0) {
+                    data.current_urls.forEach(url => {
+                        const li = document.createElement("li");
+                        li.className = "truncate";
+                        li.innerText = "▶ " + url;
+                        activeList.appendChild(li);
+                    });
+                } else {
+                    activeList.innerHTML = '<li class="text-gray-500 italic">No active workers</li>';
+                }
+
+                // Update recent URLs
+                const recentList = document.getElementById("recent-urls");
+                recentList.innerHTML = "";
+                if (data.last_fetched && data.last_fetched.length > 0) {
+                    data.last_fetched.forEach(url => {
+                        const li = document.createElement("li");
+                        li.className = "truncate";
+                        li.innerText = "✓ " + url;
+                        recentList.appendChild(li);
+                    });
+                } else {
+                    recentList.innerHTML = '<li class="text-gray-500 italic">No URLs fetched yet</li>';
+                }
+
+            } catch (e) {
+                console.error("Error parsing SSE data", e);
+            }
+        };
+
+        evtSource.onerror = function () {
+            document.getElementById("connection-status").innerText = "Disconnected";
+            document.getElementById("status-badge").classList.remove("text-green-400");
+            document.getElementById("status-badge").classList.add("text-red-400");
+        };
+    </script>
+</body>
+
+</html>
