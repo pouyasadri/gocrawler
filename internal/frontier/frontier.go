@@ -39,3 +39,25 @@ func (f *Frontier) Pop() (string, int, bool) {
 	f.queue = f.queue[1:]
 	return it.url, it.depth, true
 }
+
+// Size returns the current number of items in the queue.
+func (f *Frontier) Size() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.queue)
+}
+
+// Peek returns up to n items from the front of the queue without removing them.
+func (f *Frontier) Peek(n int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	count := n
+	if count > len(f.queue) {
+		count = len(f.queue)
+	}
+	urls := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		urls = append(urls, f.queue[i].url)
+	}
+	return urls
+}
